@@ -25,12 +25,19 @@ const socket = io(ADDRESS, { transports: ['websocket'] })
 // 9) THE SERVER DOESN'T JUST SEND A 'loggedin' EVENT WHENEVER A NEW CLIENT CONNECTS, IT'S ALSO SENDING AN EVENT OF TYPE
 // 'newConnection' TO ALL THE OTHER CLIENTS CURRENTLY CONNECTED
 // 10) WE CAN SET UP AN EVENT LISTENER FOR 'newConnection' IN ORDER TO BEING AWARE WHEN SOMEONE ELSE ENTERS THE CHAT
+// 11) WHEN WE SEND A MESSAGE WE CAN EMIT A 'sendmessage' EVENT FOR DISPATCHING MESSAGES TO THE SERVER
+// 12) AFTER SENDING A MESSAGE WE ALSO NEED TO TAKE CARE OF OUR CHAT HISTORY, APPENDING OUR MESSAGE AT THE END OF IT
+// 13) FINALLY, WE NEED TO SET AN EVENT LISTENER FOR RECEIVING MESSAGES FROM THE SERVER (COMING FROM OTHER CLIENTS):
+// WE NEED TO SET UP A LISTENER FOR THE 'message' EVENT AND APPEND EVERY MESSAGE WE RECEIVE TO OUR CHAT HISTORY,
+// TAKING CARE OF RE-EVALUATING THE VALUE OF chatHistory BEFORE APPENDING THE MESSAGE (OTHERWISE chatHistory WILL BE STUCK
+// WITH ITS INITIAL VALUE, WHICH IS AN EMPTY ARRAY)
 
 const Home = () => {
   const [username, setUsername] = useState('')
   const [message, setMessage] = useState('')
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [onlineUsers, setOnlineUsers] = useState<User[]>([])
+  const [chatHistory, setChatHistory] = useState<Message[]>([])
 
   useEffect(() => {
     // we need to launch this event listener JUST ONCE!
@@ -50,6 +57,15 @@ const Home = () => {
         // will never be sent to a user that just logged in
         console.log('Look! another client connected!')
         fetchOnlineUsers()
+      })
+
+      socket.on('message', (newMessage: Message) => {
+        // setChatHistory([...chatHistory, newMessage])
+        // bug?
+        setChatHistory((currentChatHistory) => [
+          ...currentChatHistory,
+          newMessage,
+        ])
       })
     })
   }, [])
@@ -94,6 +110,11 @@ const Home = () => {
       id: socket.id,
       timestamp: Date.now(),
     }
+
+    socket.emit('sendmessage', messageToSend)
+    setChatHistory([...chatHistory, messageToSend])
+    // [...chatHistory] <-- creates an exact copy of chatHistory
+    setMessage('')
   }
 
   return (
@@ -113,11 +134,11 @@ const Home = () => {
           </Form>
           {/* MIDDLE SECTION: CHAT HISTORY */}
           <ListGroup>
-            <ListGroup.Item>Cras justo odio</ListGroup.Item>
-            <ListGroup.Item>Dapibus ac facilisis in</ListGroup.Item>
-            <ListGroup.Item>Morbi leo risus</ListGroup.Item>
-            <ListGroup.Item>Porta ac consectetur ac</ListGroup.Item>
-            <ListGroup.Item>Vestibulum at eros</ListGroup.Item>
+            {chatHistory.map((message) => (
+              <ListGroup.Item key={message.timestamp}>
+                {message.text}
+              </ListGroup.Item>
+            ))}
           </ListGroup>
           {/* BOTTOM SECTION: NEW MESSAGE INPUT FIELD */}
           <Form onSubmit={handleMessageSubmit}>
