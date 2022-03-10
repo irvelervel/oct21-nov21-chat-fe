@@ -2,6 +2,8 @@ import 'bootstrap/dist/css/bootstrap.min.css'
 import { Container, Row, Col, Form, ListGroup, Button } from 'react-bootstrap'
 import { io } from 'socket.io-client'
 import { FormEvent, KeyboardEventHandler, useEffect, useState } from 'react'
+import User from '../types/IUser'
+import Message from '../types/IMessage'
 
 const ADDRESS = 'http://localhost:3030'
 const socket = io(ADDRESS, { transports: ['websocket'] })
@@ -18,9 +20,17 @@ const socket = io(ADDRESS, { transports: ['websocket'] })
 // 4) WE CAN SUBMIT NOW OUR USERNAME TO THE SERVER, EMITTING A 'setUsername' EVENT
 // 5) IF THE SERVER ACCEPTS OUR USERNAME, IT WILL EMIT US BACK ANOTHER EVENT, CALLED 'loggedin'
 // 6) WE CAN SET UP ANOTHER EVENT LISTENER FOR THE 'loggedin' EVENT
+// 7) LISTENING TO THIS 'loggedin' EVENT ALLOWS US TO DISABLE THE USERNAME FIELD AND ENABLE THE MESSAGE FIELD
+// 8) AFTER LOGGIN IN WE CAN FETCH THE LIST OF ONLINE USERS WITH fetchOnlineUsers()
+// 9) THE SERVER DOESN'T JUST SEND A 'loggedin' EVENT WHENEVER A NEW CLIENT CONNECTS, IT'S ALSO SENDING AN EVENT OF TYPE
+// 'newConnection' TO ALL THE OTHER CLIENTS CURRENTLY CONNECTED
+// 10) WE CAN SET UP AN EVENT LISTENER FOR 'newConnection' IN ORDER TO BEING AWARE WHEN SOMEONE ELSE ENTERS THE CHAT
 
 const Home = () => {
   const [username, setUsername] = useState('')
+  const [message, setMessage] = useState('')
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [onlineUsers, setOnlineUsers] = useState<User[]>([])
 
   useEffect(() => {
     // we need to launch this event listener JUST ONCE!
@@ -32,6 +42,15 @@ const Home = () => {
 
     socket.on('loggedin', () => {
       console.log("You're correctly logged in now")
+      setIsLoggedIn(true)
+      fetchOnlineUsers()
+
+      socket.on('newConnection', () => {
+        // this is for the already connected clients!
+        // will never be sent to a user that just logged in
+        console.log('Look! another client connected!')
+        fetchOnlineUsers()
+      })
     })
   }, [])
 
@@ -46,6 +65,37 @@ const Home = () => {
     })
   }
 
+  const fetchOnlineUsers = async () => {
+    try {
+      let response = await fetch(ADDRESS + '/online-users')
+      if (response.ok) {
+        let data = await response.json()
+        console.log('online users: ', data)
+        let users = data.onlineUsers
+        setOnlineUsers(users)
+      }
+    } catch (error) {
+      console.log(error)
+    }
+  }
+
+  const handleMessageSubmit = (e: FormEvent) => {
+    e.preventDefault()
+
+    // a valid message for our platform is made by these properties
+    // text
+    // sender
+    // timestamp
+    // id
+
+    const messageToSend: Message = {
+      text: message,
+      sender: username,
+      id: socket.id,
+      timestamp: Date.now(),
+    }
+  }
+
   return (
     <Container fluid className='px-4 mt-3'>
       <Row style={{ height: '95vh' }}>
@@ -58,6 +108,7 @@ const Home = () => {
               placeholder='Enter your username'
               value={username}
               onChange={(e) => setUsername(e.target.value)}
+              disabled={isLoggedIn}
             />
           </Form>
           {/* MIDDLE SECTION: CHAT HISTORY */}
@@ -69,17 +120,23 @@ const Home = () => {
             <ListGroup.Item>Vestibulum at eros</ListGroup.Item>
           </ListGroup>
           {/* BOTTOM SECTION: NEW MESSAGE INPUT FIELD */}
-          <Form onSubmit={() => console.log('message submitted')}>
-            <Form.Control type='text' placeholder='Enter your message' />
+          <Form onSubmit={handleMessageSubmit}>
+            <Form.Control
+              type='text'
+              placeholder='Enter your message'
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              disabled={!isLoggedIn}
+            />
           </Form>
         </Col>
         <Col md={2}>
           {/* ONLINE USERS COL */}
           <div className='mb-3'>Connected users:</div>
           <ListGroup>
-            <ListGroup.Item>Carlos</ListGroup.Item>
-            <ListGroup.Item>Giorgio</ListGroup.Item>
-            <ListGroup.Item>Hilina</ListGroup.Item>
+            {onlineUsers.map((user) => (
+              <ListGroup.Item key={user.id}>{user.username}</ListGroup.Item>
+            ))}
           </ListGroup>
         </Col>
       </Row>
